@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Operativos Vet</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1923; --bg2: #192636; --bg3: #243347;
+      --blue: #00c2ff; --green: #00c853; --yellow: #ffab00; --red: #ff3d00;
+      --text: #dce8f5; --muted: #607d99; --border: #253244;
+      --r: 12px; --nav-h: 62px;
+    }
+
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      -webkit-tap-highlight-color: transparent; overflow: hidden;
+    }
+
+    #app { display: flex; flex-direction: column; height: 100dvh; }
+
+    /* ── Header ── */
+    #header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 12px 16px 10px; flex-shrink: 0; }
+    #header h1  { font-size: 18px; font-weight: 800; color: var(--blue); letter-spacing: -.3px; }
+    #header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Views ── */
+    .view { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+    .view.active { display: flex; }
+
+    /* ── Bottom nav ── */
+    #nav { display: flex; background: var(--bg2); border-top: 1px solid var(--border); height: var(--nav-h); flex-shrink: 0; }
+    .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; background: none; border: none; color: var(--muted); font-size: 10px; font-weight: 700;
+      cursor: pointer; transition: color .15s; text-transform: uppercase; letter-spacing: .5px; padding: 6px 4px; }
+    .nav-btn svg { width: 22px; height: 22px; }
+    .nav-btn.active { color: var(--blue); }
+
+    /* ── LISTA VIEW ── */
+    .search-bar { padding: 12px 16px 0; background: var(--bg2); flex-shrink: 0; }
+    .search-wrap { position: relative; }
+    .search-wrap input { width: 100%; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 10px 40px 10px 14px; color: var(--text); font-size: 14px; outline: none; appearance: none; }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .search-wrap input:focus { border-color: var(--blue); }
+    .search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; line-height: 1; padding: 4px; display: none; }
+
+    .filters { display: flex; gap: 8px; padding: 10px 16px; background: var(--bg2);
+      border-bottom: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
+    .filters::-webkit-scrollbar { display: none; }
+
+    select.fsel { background: var(--bg3); border: 1px solid var(--border); border-radius: 20px;
+      color: var(--text); font-size: 12px; padding: 6px 12px; outline: none; appearance: none; cursor: pointer; flex-shrink: 0; }
+    select.fsel:focus { border-color: var(--blue); }
+
+    .chip { background: var(--bg3); border: 1px solid var(--border); border-radius: 20px;
+      color: var(--muted); font-size: 12px; padding: 6px 14px; cursor: pointer;
+      white-space: nowrap; flex-shrink: 0; font-weight: 700; transition: all .15s; }
+    .chip.on-pendiente { background: rgba(255,171,0,.15); border-color: var(--yellow); color: var(--yellow); }
+    .chip.on-realizado { background: rgba(0,200,83,.15);  border-color: var(--green);  color: var(--green); }
+    .chip.on-no_volver { background: rgba(255,61,0,.15);  border-color: var(--red);    color: var(--red); }
+
+    #lista-count { padding: 8px 16px; font-size: 12px; color: var(--muted); flex-shrink: 0; background: var(--bg); }
+
+    #cards { flex: 1; overflow-y: auto; padding: 8px 16px 16px;
+      display: grid; grid-template-columns: 1fr; gap: 10px; align-content: start; }
+    @media (min-width:600px) { #cards { grid-template-columns: 1fr 1fr; } }
+    @media (min-width:900px) { #cards { grid-template-columns: 1fr 1fr 1fr; } }
+
+    /* Card */
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r);
+      cursor: pointer; transition: border-color .15s, transform .1s; position: relative; overflow: hidden; }
+    .card:active { transform: scale(.98); }
+    .card-body { padding: 14px; }
+    .card::before { content:''; position: absolute; left:0; top:0; bottom:0; width:4px; border-radius:4px 0 0 4px; }
+    .card.realizado::before  { background: var(--green); }
+    .card.pendiente::before  { background: var(--yellow); }
+    .card.no_volver::before  { background: var(--red); }
+    .card.sin_estado::before { background: var(--muted); }
+
+    .card-place { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; padding-left: 4px; line-height: 1.35; }
+    .card-meta  { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 4px; }
+    .card-date  { font-size: 12px; color: var(--muted); }
+
+    .badge { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 2px 8px; letter-spacing: .3px; text-transform: uppercase; }
+    .badge.realizado { background: rgba(0,200,83,.15);  color: var(--green); }
+    .badge.pendiente { background: rgba(255,171,0,.15); color: var(--yellow); }
+    .badge.no_volver { background: rgba(255,61,0,.15);  color: var(--red); }
+    .badge.nuevo     { background: rgba(0,194,255,.12); color: var(--blue); }
+
+    .card-note   { font-size: 12px; color: var(--muted); margin-top: 6px; padding-left: 4px;
+      font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-coords { font-size: 11px; color: var(--blue); margin-top: 4px; padding-left: 4px; }
+
+    /* Card footer with coord button */
+    .card-footer { border-top: 1px solid var(--border); padding: 8px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .btn-coord { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer;
+      padding: 2px 4px; display: flex; align-items: center; gap: 4px; transition: color .15s; }
+    .btn-coord:hover { color: var(--blue); }
+    .btn-coord.has-coords { color: var(--blue); }
+
+    /* Inline coord form */
+    .coord-form { display: none; background: var(--bg3); border-top: 1px solid var(--border); padding: 10px 14px; }
+    .coord-form.open { display: block; }
+    .coord-form-row { display: flex; gap: 8px; align-items: flex-end; }
+    .coord-input-group { flex: 1; }
+    .coord-input-group label { display: block; font-size: 10px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .coord-input-group input { width: 100%; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 7px 10px; color: var(--text); font-size: 13px; outline: none; appearance: none; }
+    .coord-input-group input:focus { border-color: var(--blue); }
+    .coord-form-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .btn-coord-save { flex: 1; background: var(--blue); color: var(--bg); border: none;
+      border-radius: 6px; padding: 8px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .btn-coord-del  { background: rgba(255,61,0,.1); border: 1px solid var(--red); color: var(--red);
+      border-radius: 6px; padding: 8px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .coord-hint { font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+    /* ── MAPA VIEW ── */
+    #map-container { flex: 1; position: relative; }
+    #leaflet-map   { width: 100%; height: 100%; }
+
+    /* Leaflet popup override for dark theme */
+    .leaflet-popup-content-wrapper {
+      background: var(--bg2) !important; border: 1px solid var(--border) !important;
+      border-radius: var(--r) !important; box-shadow: 0 4px 20px rgba(0,0,0,.5) !important; color: var(--text) !important;
+    }
+    .leaflet-popup-tip { background: var(--bg2) !important; }
+    .leaflet-popup-content { margin: 14px 16px !important; min-width: 200px; }
+    .pop-place { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.35; margin-bottom: 4px; }
+    .pop-date  { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .pop-btns  { display: flex; gap: 8px; }
+    .pop-btn   { flex: 1; padding: 8px; border-radius: 8px; border: none; font-size: 12px;
+      font-weight: 700; cursor: pointer; text-align: center; text-decoration: none; display: block; }
+    .pop-waze  { background: #00c2ff; color: #0f1923; }
+    .pop-gmaps { background: #34a853; color: white; }
+    .leaflet-popup-close-button { color: var(--muted) !important; font-size: 18px !important; top: 8px !important; right: 8px !important; }
+
+    /* Map counter badge */
+    #map-count { position: absolute; top: 12px; left: 12px; z-index: 1000;
+      background: rgba(25,38,54,.92); border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 10px; font-size: 12px; color: var(--muted); }
+    #map-count span { color: var(--blue); font-weight: 700; }
+
+    /* ── AGREGAR VIEW ── */
+    #view-agregar { overflow-y: auto; }
+    .form-wrap  { padding: 20px 16px 32px; max-width: 560px; margin: 0 auto; }
+    .form-title { font-size: 18px; font-weight: 800; color: var(--blue); margin-bottom: 4px; }
+    .form-sub   { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+    .frow   { display: flex; gap: 12px; }
+    .fgroup { margin-bottom: 16px; flex: 1; }
+    .fgroup label { display: block; font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+    .fgroup input, .fgroup select, .fgroup textarea {
+      width: 100%; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; color: var(--text); font-size: 14px;
+      outline: none; appearance: none; font-family: inherit; }
+    .fgroup input:focus, .fgroup select:focus { border-color: var(--blue); }
+    .coords-hint { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+
+    .btn-add { width: 100%; background: var(--blue); color: var(--bg); border: none;
+      border-radius: var(--r); padding: 14px; font-size: 15px; font-weight: 800;
+      cursor: pointer; transition: opacity .15s; margin-top: 4px; }
+    .btn-add:active { opacity: .8; }
+    .form-ok { display: none; background: rgba(0,200,83,.1); border: 1px solid var(--green);
+      border-radius: var(--r); padding: 12px; color: var(--green); font-size: 14px;
+      font-weight: 700; text-align: center; margin-top: 12px; }
+
+    .cl-title { font-size: 14px; font-weight: 700; color: var(--text);
+      margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .ci { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+    .ci-info { flex: 1; min-width: 0; }
+    .ci-place { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ci-date  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .btn-del  { background: none; border: none; color: var(--red); cursor: pointer; font-size: 22px; padding: 4px; flex-shrink: 0; line-height: 1; }
+
+    /* ── MODAL ── */
+    #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.72);
+      z-index: 2000; align-items: flex-end; justify-content: center; }
+    #modal-overlay.show { display: flex; }
+    #modal { background: var(--bg2); border-radius: var(--r) var(--r) 0 0;
+      border-top: 1px solid var(--border); width: 100%; max-width: 560px;
+      max-height: 92dvh; overflow-y: auto; padding: 18px 20px;
+      padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+    @media (min-width:600px) {
+      #modal-overlay { align-items: center; }
+      #modal { border-radius: var(--r); border: 1px solid var(--border); max-height: 80dvh; } }
+
+    .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 16px; }
+    @media (min-width:600px) { .modal-handle { display: none; } }
+
+    .modal-place { font-size: 17px; font-weight: 700; color: var(--text); line-height: 1.3; margin-bottom: 5px; }
+    .modal-date  { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .modal-addr  { font-size: 12px; color: var(--blue); margin-bottom: 16px; }
+
+    .nav-ext { display: flex; gap: 10px; margin-bottom: 20px; }
+    .ext-btn { flex: 1; display: flex; align-items: center; justify-content: center;
+      gap: 6px; padding: 11px 10px; border-radius: 10px; border: none; font-size: 13px;
+      font-weight: 800; cursor: pointer; transition: opacity .15s; text-decoration: none; }
+    .ext-btn:active { opacity: .7; }
+    .ext-waze  { background: var(--blue); color: #0f1923; }
+    .ext-gmaps { background: #34a853; color: white; }
+
+    .sec-label  { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px; }
+    .estado-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .esbtn { flex: 1; padding: 10px 4px; border-radius: 10px; border: 2px solid var(--border);
+      background: var(--bg3); color: var(--muted); font-size: 11px; font-weight: 800;
+      cursor: pointer; text-align: center; transition: all .15s; text-transform: uppercase; letter-spacing: .3px; }
+    .esbtn.sel-pendiente { background: rgba(255,171,0,.15); border-color: var(--yellow); color: var(--yellow); }
+    .esbtn.sel-realizado { background: rgba(0,200,83,.15);  border-color: var(--green);  color: var(--green); }
+    .esbtn.sel-no_volver { background: rgba(255,61,0,.15);  border-color: var(--red);    color: var(--red); }
+
+    .nota-area { width: 100%; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; color: var(--text); font-size: 14px;
+      outline: none; resize: vertical; min-height: 80px; font-family: inherit; margin-bottom: 16px; }
+    .nota-area:focus { border-color: var(--blue); }
+
+    .modal-acts { display: flex; gap: 10px; }
+    .btn-save   { flex: 1; background: var(--blue); color: var(--bg); border: none; border-radius: 10px; padding: 12px; font-size: 14px; font-weight: 800; cursor: pointer; }
+    .btn-cancel { background: var(--bg3); color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 12px 20px; font-size: 14px; font-weight: 700; cursor: pointer; }
+
+    /* ── Misc ── */
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); grid-column: 1/-1; }
+    .empty svg { width: 44px; height: 44px; opacity: .25; margin-bottom: 12px; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* No data guard */
+    #no-data { display: none; position: fixed; inset: 0; background: var(--bg); z-index: 9999;
+      align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 32px; text-align: center; }
+    #no-data.show { display: flex; }
+    #no-data h2 { color: var(--red); font-size: 20px; }
+    #no-data p  { color: var(--muted); font-size: 14px; line-height: 1.6; }
+    #no-data code { color: var(--blue); }
+  </style>
+</head>
+<body>
+
+<div id="no-data">
+  <h2>&#9888; Datos no encontrados</h2>
+  <p>No se cargó <code>operativos_data.js</code>.<br>Abrí la app desde un servidor local:</p>
+  <code>python -m http.server 8080</code>
+  <p>Luego accedé a <code>http://localhost:8080/app.html</code></p>
+</div>
+
+<div id="app">
+
+  <div id="header">
+    <h1>Operativos Veterinarios</h1>
+    <div class="sub" id="hdr-sub">Cargando...</div>
+  </div>
+
+  <!-- ── Vista Lista ── -->
+  <div id="view-lista" class="view active">
+    <div class="search-bar">
+      <div class="search-wrap">
+        <input type="search" id="si" placeholder="Buscar por lugar o dirección..." autocomplete="off" spellcheck="false">
+        <button class="search-clear" id="sc">&times;</button>
+      </div>
+    </div>
+    <div class="filters">
+      <select class="fsel" id="fmes"><option value="">Todos los meses</option></select>
+      <select class="fsel" id="fanio"><option value="">Todos los años</option></select>
+      <button class="chip" id="ch-pendiente">Pendiente</button>
+      <button class="chip" id="ch-realizado">Realizado</button>
+      <button class="chip" id="ch-no_volver">No volver</button>
+    </div>
+    <div id="lista-count"></div>
+    <div id="cards"></div>
+  </div>
+
+  <!-- ── Vista Mapa ── -->
+  <div id="view-mapa" class="view">
+    <div id="map-container">
+      <div id="leaflet-map"></div>
+      <div id="map-count">Pins: <span id="map-pin-count">0</span></div>
+    </div>
+  </div>
+
+  <!-- ── Vista Agregar ── -->
+  <div id="view-agregar" class="view">
+    <div class="form-wrap">
+      <div class="form-title">Nuevo Operativo</div>
+      <div class="form-sub">Completá los datos. Se guardan localmente en este dispositivo.</div>
+
+      <div class="frow">
+        <div class="fgroup" style="max-width:80px">
+          <label>Día</label>
+          <input type="number" id="f-dia" min="1" max="31" placeholder="15">
+        </div>
+        <div class="fgroup">
+          <label>Mes</label>
+          <select id="f-mes">
+            <option value="">—</option>
+            <option>Enero</option><option>Febrero</option><option>Marzo</option>
+            <option>Abril</option><option>Mayo</option><option>Junio</option>
+            <option>Julio</option><option>Agosto</option><option>Septiembre</option>
+            <option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
+          </select>
+        </div>
+        <div class="fgroup" style="max-width:100px">
+          <label>Año</label>
+          <input type="number" id="f-anio" min="2020" max="2099" placeholder="2025">
+        </div>
+      </div>
+      <div class="fgroup">
+        <label>Lugar / Nombre</label>
+        <input type="text" id="f-lugar" placeholder="Plaza de San Martín / Av. Principal">
+      </div>
+      <div class="fgroup">
+        <label>Dirección (opcional)</label>
+        <input type="text" id="f-dir" placeholder="Av. Ejemplo 1234, Santiago">
+      </div>
+      <div class="frow">
+        <div class="fgroup">
+          <label>Latitud</label>
+          <input type="number" id="f-lat" step="any" placeholder="-33.4489">
+          <div class="coords-hint">Google Maps: click derecho &#8594; copiar coordenadas</div>
+        </div>
+        <div class="fgroup">
+          <label>Longitud</label>
+          <input type="number" id="f-lng" step="any" placeholder="-70.6693">
+        </div>
+      </div>
+      <button class="btn-add" id="btn-add">Guardar Operativo</button>
+      <div class="form-ok" id="form-ok">&#10003;&#160; Operativo guardado!</div>
+      <div id="cl-wrap"></div>
+    </div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <nav id="nav">
+    <button class="nav-btn active" id="nb-lista" onclick="App.go('lista')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+        <circle cx="3" cy="6" r=".6" fill="currentColor"/>
+        <circle cx="3" cy="12" r=".6" fill="currentColor"/>
+        <circle cx="3" cy="18" r=".6" fill="currentColor"/>
+      </svg>Lista
+    </button>
+    <button class="nav-btn" id="nb-mapa" onclick="App.go('mapa')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+        <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+      </svg>Mapa
+    </button>
+    <button class="nav-btn" id="nb-agregar" onclick="App.go('agregar')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+      </svg>Agregar
+    </button>
+  </nav>
+</div>
+
+<!-- Modal (editar estado + notas) -->
+<div id="modal-overlay" onclick="App.closeModal()">
+  <div id="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-place" id="m-place"></div>
+    <div class="modal-date"  id="m-date"></div>
+    <div class="modal-addr"  id="m-addr"></div>
+    <div class="nav-ext">
+      <a class="ext-btn ext-waze"  id="m-waze"  href="#" target="_blank" rel="noopener">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2a9 9 0 0 0-9 9c0 4 2.5 7.5 6.5 10.3.3.2.7.2 1 0C14.5 18.5 21 15 21 11A9 9 0 0 0 12 2z"/>
+          <circle cx="9.5" cy="10.5" r="1.2" fill="white"/>
+          <circle cx="14.5" cy="10.5" r="1.2" fill="white"/>
+          <path d="M9 13.5s1 1.5 3 1.5 3-1.5 3-1.5" stroke="white" stroke-width="1" fill="none" stroke-linecap="round"/>
+        </svg>Waze
+      </a>
+      <a class="ext-btn ext-gmaps" id="m-gmaps" href="#" target="_blank" rel="noopener">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>
+        </svg>Google Maps
+      </a>
+    </div>
+    <div class="sec-label">Estado</div>
+    <div class="estado-row">
+      <button class="esbtn" id="eb-pendiente" onclick="App.setE('pendiente')">Pendiente</button>
+      <button class="esbtn" id="eb-realizado" onclick="App.setE('realizado')">Realizado</button>
+      <button class="esbtn" id="eb-no_volver" onclick="App.setE('no_volver')">No volver</button>
+    </div>
+    <div class="sec-label">Notas</div>
+    <textarea class="nota-area" id="m-nota" placeholder="Agregar notas sobre este operativo..."></textarea>
+    <div class="modal-acts">
+      <button class="btn-save"   onclick="App.save()">Guardar</button>
+      <button class="btn-cancel" onclick="App.closeModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN2GqAQ=" crossorigin=""></script>
+<script src="operativos_data.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  if (typeof operativosData === 'undefined') {
+    document.getElementById('no-data').classList.add('show');
+    return;
+  }
+
+  // ─── Storage keys ─────────────────────────────────────────────────────────
+  const SK = 'vet_ops_v2';       // { id: {estado, nota} }
+  const CK = 'vet_ops_custom';   // [{id,dia,mes,anio,lugar,dir,lat,lng}]
+  const XK = 'vet_ops_coords';   // { id: {lat, lng} } — coords for base operatives
+
+  const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                 'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const MN = Object.fromEntries(MESES.map((m,i) => [m, i+1]));
+
+  // ─── App state ────────────────────────────────────────────────────────────
+  let store       = {};  // estado + nota per id
+  let custom      = [];  // user-added operatives
+  let coordsStore = {};  // manually added coords for base operatives
+  let all         = [];  // combined list
+  let view        = 'lista';
+  let mId         = null, mE = 'pendiente';
+  let fMes='', fAnio='', fE='', fQ='';
+  let openCoordForm = null;  // id of card with open coord form
+
+  // Leaflet
+  let leafletMap    = null;
+  let markersLayer  = null;
+  let mapInited     = false;
+
+  // ─── Storage ──────────────────────────────────────────────────────────────
+  function load() {
+    try { store       = JSON.parse(localStorage.getItem(SK) || '{}'); } catch(e) { store = {}; }
+    try { custom      = JSON.parse(localStorage.getItem(CK) || '[]'); } catch(e) { custom = []; }
+    try { coordsStore = JSON.parse(localStorage.getItem(XK) || '{}'); } catch(e) { coordsStore = {}; }
+  }
+  function saveStore()  { localStorage.setItem(SK, JSON.stringify(store)); }
+  function saveCustom() { localStorage.setItem(CK, JSON.stringify(custom)); }
+  function saveCoords() { localStorage.setItem(XK, JSON.stringify(coordsStore)); }
+
+  // ─── Build combined list ──────────────────────────────────────────────────
+  function build() {
+    all = operativosData.map((o,i) => ({
+      id:'b_'+i, dia:o.dia, mes:o.mes, anio:o.anio,
+      lugar:o.lugar, dir:'', lat:null, lng:null, isCustom:false
+    }));
+    custom.forEach(o => all.push({ ...o, isCustom:true }));
+  }
+
+  // Get effective coords for any operative (custom own coords or manual entry)
+  function getCoords(op) {
+    if (op.isCustom && op.lat !== null && op.lat !== '' && op.lng !== null && op.lng !== '') {
+      return { lat: parseFloat(op.lat), lng: parseFloat(op.lng) };
+    }
+    if (coordsStore[op.id]) {
+      const c = coordsStore[op.id];
+      if (c.lat !== null && c.lng !== null) return { lat: parseFloat(c.lat), lng: parseFloat(c.lng) };
+    }
+    return null;
+  }
+
+  function hasCoords(op) { return getCoords(op) !== null; }
+
+  function gs(id) { return store[id] || { estado:'pendiente', nota:'' }; }
+
+  // ─── Nav URLs ─────────────────────────────────────────────────────────────
+  function wazeUrl(op) {
+    const c = getCoords(op);
+    if (c) return `https://waze.com/ul?ll=${c.lat},${c.lng}&navigate=yes`;
+    return `https://waze.com/ul?q=${encodeURIComponent(op.lugar + ', Santiago')}`;
+  }
+  function gmapsUrl(op) {
+    const c = getCoords(op);
+    if (c) return `https://maps.google.com/?q=${c.lat},${c.lng}`;
+    return `https://maps.google.com/?q=${encodeURIComponent(op.lugar + ', Santiago')}`;
+  }
+
+  // ─── Filters ──────────────────────────────────────────────────────────────
+  function filtered() {
+    return all.filter(op => {
+      if (fQ) { const q=fQ.toLowerCase(), h=(op.lugar+' '+(op.dir||'')).toLowerCase(); if(!h.includes(q)) return false; }
+      if (fMes  && op.mes !== fMes)           return false;
+      if (fAnio && String(op.anio) !== fAnio) return false;
+      if (fE    && gs(op.id).estado !== fE)   return false;
+      return true;
+    });
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ─── Render: Lista ────────────────────────────────────────────────────────
+  function renderLista() {
+    const ops = filtered();
+    document.getElementById('lista-count').textContent =
+      ops.length + ' operativo' + (ops.length !== 1 ? 's' : '');
+
+    if (!ops.length) {
+      document.getElementById('cards').innerHTML =
+        `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><p>Sin resultados</p></div>`;
+      return;
+    }
+
+    document.getElementById('cards').innerHTML = ops.map(op => {
+      const st    = gs(op.id);
+      const estado = st.estado || 'pendiente';
+      const nota   = st.nota || '';
+      const hasS   = !!store[op.id];
+      const eLabel = estado === 'realizado' ? 'Realizado' : estado === 'no_volver' ? 'No volver' : 'Pendiente';
+      const coords = getCoords(op);
+      const coordLabel = coords ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : null;
+
+      return `
+        <div class="card ${hasS ? estado : 'sin_estado'}" id="card-${op.id}">
+          <div class="card-body" onclick="App.openModal('${op.id}')">
+            <div class="card-place">${esc(op.lugar)}</div>
+            <div class="card-meta">
+              <span class="card-date">${op.dia} ${op.mes} ${op.anio}</span>
+              ${hasS ? `<span class="badge ${estado}">${eLabel}</span>` : ''}
+              ${op.isCustom ? `<span class="badge nuevo">Nuevo</span>` : ''}
+            </div>
+            ${nota ? `<div class="card-note">${esc(nota)}</div>` : ''}
+            ${coordLabel ? `<div class="card-coords">&#128205; ${coordLabel}</div>` : ''}
+          </div>
+          <div class="card-footer">
+            <button class="btn-coord ${coords ? 'has-coords' : ''}" onclick="App.toggleCoordForm('${op.id}', event)">
+              &#128205; ${coords ? 'Editar coordenadas' : 'Agregar coordenadas'}
+            </button>
+          </div>
+          <div class="coord-form ${openCoordForm === op.id ? 'open' : ''}" id="cf-${op.id}">
+            <div class="coord-form-row">
+              <div class="coord-input-group">
+                <label>Latitud</label>
+                <input type="number" step="any" id="cf-lat-${op.id}"
+                  value="${coords ? coords.lat : ''}" placeholder="-33.4489"
+                  onclick="event.stopPropagation()">
+              </div>
+              <div class="coord-input-group">
+                <label>Longitud</label>
+                <input type="number" step="any" id="cf-lng-${op.id}"
+                  value="${coords ? coords.lng : ''}" placeholder="-70.6693"
+                  onclick="event.stopPropagation()">
+              </div>
+            </div>
+            <div class="coord-form-actions">
+              <button class="btn-coord-save" onclick="App.saveCoord('${op.id}', event)">Guardar</button>
+              ${coords ? `<button class="btn-coord-del" onclick="App.delCoord('${op.id}', event)">Quitar</button>` : ''}
+            </div>
+            <div class="coord-hint">Google Maps: click derecho sobre el lugar &#8594; copiar coordenadas</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ─── Inline coord form ────────────────────────────────────────────────────
+  function toggleCoordForm(id, ev) {
+    ev.stopPropagation();
+    openCoordForm = openCoordForm === id ? null : id;
+    renderLista();
+    if (openCoordForm) {
+      // Scroll card into view and focus lat input
+      setTimeout(() => {
+        const el = document.getElementById('cf-lat-' + id);
+        if (el) { el.focus(); el.closest('.card').scrollIntoView({ behavior:'smooth', block:'nearest' }); }
+      }, 50);
+    }
+  }
+
+  function saveCoord(id, ev) {
+    ev.stopPropagation();
+    const latEl = document.getElementById('cf-lat-' + id);
+    const lngEl = document.getElementById('cf-lng-' + id);
+    const lat   = parseFloat(latEl.value);
+    const lng   = parseFloat(lngEl.value);
+
+    if (isNaN(lat) || isNaN(lng)) { alert('Ingresá latitud y longitud válidas.'); return; }
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) { alert('Coordenadas fuera de rango.'); return; }
+
+    // For custom operatives, update the object directly
+    const op = all.find(o => o.id === id);
+    if (op && op.isCustom) {
+      const ci = custom.find(o => o.id === id);
+      if (ci) { ci.lat = lat; ci.lng = lng; saveCustom(); }
+    } else {
+      coordsStore[id] = { lat, lng };
+      saveCoords();
+    }
+
+    openCoordForm = null;
+    build();
+    render();
+    if (view === 'mapa') renderMap();
+  }
+
+  function delCoord(id, ev) {
+    ev.stopPropagation();
+    const op = all.find(o => o.id === id);
+    if (op && op.isCustom) {
+      const ci = custom.find(o => o.id === id);
+      if (ci) { ci.lat = null; ci.lng = null; saveCustom(); }
+    } else {
+      delete coordsStore[id];
+      saveCoords();
+    }
+    openCoordForm = null;
+    build();
+    render();
+    if (view === 'mapa') renderMap();
+  }
+
+  // ─── Leaflet Map ──────────────────────────────────────────────────────────
+  function initMap() {
+    if (mapInited) return;
+    mapInited = true;
+
+    leafletMap = L.map('leaflet-map', {
+      center: [-33.45, -70.655],
+      zoom: 12,
+      zoomControl: true
+    });
+
+    // Dark tile layer (CartoDB Dark Matter)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(leafletMap);
+
+    markersLayer = L.layerGroup().addTo(leafletMap);
+  }
+
+  function renderMap() {
+    initMap();
+    markersLayer.clearLayers();
+
+    const ops = filtered();
+    let pinCount = 0;
+
+    ops.forEach(op => {
+      const c = getCoords(op);
+      if (!c) return;  // skip operatives without coords
+
+      pinCount++;
+      const estado = gs(op.id).estado || 'pendiente';
+      const color  = estado === 'realizado' ? '#00c853' : estado === 'no_volver' ? '#ff3d00' : '#ffab00';
+      const eLabel = estado === 'realizado' ? 'Realizado' : estado === 'no_volver' ? 'No volver' : 'Pendiente';
+
+      const marker = L.circleMarker([c.lat, c.lng], {
+        radius:      8,
+        fillColor:   color,
+        color:       'white',
+        weight:      2,
+        opacity:     1,
+        fillOpacity: 0.9
+      });
+
+      const popupHtml = `
+        <div class="pop-place">${esc(op.lugar)}</div>
+        <div class="pop-date">${op.dia} ${op.mes} ${op.anio} &middot; ${eLabel}</div>
+        <div class="pop-btns">
+          <a class="pop-btn pop-waze"  href="${wazeUrl(op)}"  target="_blank" rel="noopener">&#9670; Waze</a>
+          <a class="pop-btn pop-gmaps" href="${gmapsUrl(op)}" target="_blank" rel="noopener">&#9650; Maps</a>
+        </div>`;
+
+      marker.bindPopup(popupHtml, { maxWidth: 260, autoPan: true });
+      marker.addTo(markersLayer);
+    });
+
+    document.getElementById('map-pin-count').textContent = pinCount;
+
+    // Invalidate size in case the container was hidden when initialized
+    leafletMap.invalidateSize();
+  }
+
+  // ─── Render: Custom list (Agregar tab) ────────────────────────────────────
+  function renderCustom() {
+    const w = document.getElementById('cl-wrap');
+    if (!custom.length) { w.innerHTML = ''; return; }
+    w.innerHTML = `<div class="cl-title">Guardados localmente (${custom.length})</div>` +
+      custom.map(op => `
+        <div class="ci">
+          <div class="ci-info">
+            <div class="ci-place">${esc(op.lugar)}</div>
+            <div class="ci-date">${op.dia} ${op.mes} ${op.anio}${(op.lat && op.lng) ? ` &middot; ${op.lat}, ${op.lng}` : ''}</div>
+          </div>
+          <button class="btn-del" onclick="App.delCustom('${op.id}')" title="Eliminar">&times;</button>
+        </div>`).join('');
+  }
+
+  // ─── Build filter dropdowns ───────────────────────────────────────────────
+  function buildFilters() {
+    const ms = [...new Set(all.map(o => o.mes))].sort((a,b) => (MN[a]||99)-(MN[b]||99));
+    const as = [...new Set(all.map(o => o.anio))].sort();
+    document.getElementById('fmes').innerHTML =
+      '<option value="">Todos los meses</option>' + ms.map(m => `<option value="${m}">${m}</option>`).join('');
+    document.getElementById('fanio').innerHTML =
+      '<option value="">Todos los años</option>' + as.map(a => `<option value="${a}">${a}</option>`).join('');
+  }
+
+  function updateChips() {
+    ['pendiente','realizado','no_volver'].forEach(e => {
+      document.getElementById('ch-'+e).className = 'chip' + (fE === e ? ' on-'+e : '');
+    });
+  }
+
+  function updateHeader() {
+    const tot  = all.length;
+    const real = all.filter(o => (store[o.id]||{}).estado === 'realizado').length;
+    const nvol = all.filter(o => (store[o.id]||{}).estado === 'no_volver').length;
+    const wc   = all.filter(o => hasCoords(o)).length;
+    document.getElementById('hdr-sub').textContent =
+      `${tot} operativos · ${real} realizados · ${wc} en mapa`;
+  }
+
+  // ─── Modal ────────────────────────────────────────────────────────────────
+  function openModal(id) {
+    const op = all.find(o => o.id === id);
+    if (!op) return;
+    mId = id;
+    const st = gs(id);
+    mE = st.estado || 'pendiente';
+
+    document.getElementById('m-place').textContent = op.lugar;
+    document.getElementById('m-date').textContent  = `${op.dia} de ${op.mes} de ${op.anio}`;
+
+    const c = getCoords(op);
+    const addrEl  = document.getElementById('m-addr');
+    const addrTxt = op.dir || (c ? `${c.lat}, ${c.lng}` : '');
+    addrEl.textContent   = addrTxt;
+    addrEl.style.display = addrTxt ? 'block' : 'none';
+
+    document.getElementById('m-waze').href  = wazeUrl(op);
+    document.getElementById('m-gmaps').href = gmapsUrl(op);
+    document.getElementById('m-nota').value = st.nota || '';
+
+    updEBtns();
+    document.getElementById('modal-overlay').classList.add('show');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('show');
+    document.body.style.overflow = '';
+    mId = null;
+  }
+
+  function setE(e) { mE = e; updEBtns(); }
+
+  function updEBtns() {
+    ['pendiente','realizado','no_volver'].forEach(e => {
+      document.getElementById('eb-'+e).className = 'esbtn' + (mE === e ? ' sel-'+e : '');
+    });
+  }
+
+  function save() {
+    if (!mId) return;
+    store[mId] = { estado: mE, nota: document.getElementById('m-nota').value.trim() };
+    saveStore();
+    closeModal();
+    updateHeader();
+    render();
+    if (view === 'mapa') renderMap();
+  }
+
+  // ─── Add form ─────────────────────────────────────────────────────────────
+  function submitForm() {
+    const dia   = document.getElementById('f-dia').value.trim();
+    const mes   = document.getElementById('f-mes').value;
+    const anio  = document.getElementById('f-anio').value.trim();
+    const lugar = document.getElementById('f-lugar').value.trim();
+    const dir   = document.getElementById('f-dir').value.trim();
+    const latR  = document.getElementById('f-lat').value.trim();
+    const lngR  = document.getElementById('f-lng').value.trim();
+
+    if (!dia || !mes || !anio || !lugar) { alert('Completá Día, Mes, Año y Lugar.'); return; }
+
+    const lat = latR ? parseFloat(latR) : null;
+    const lng = lngR ? parseFloat(lngR) : null;
+
+    custom.push({ id:'c_'+Date.now(), dia, mes, anio:parseInt(anio), lugar, dir, lat, lng });
+    saveCustom();
+    build();
+    buildFilters();
+    updateHeader();
+
+    ['f-dia','f-mes','f-anio','f-lugar','f-dir','f-lat','f-lng'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el.tagName === 'SELECT') el.selectedIndex = 0; else el.value = '';
+    });
+
+    const ok = document.getElementById('form-ok');
+    ok.style.display = 'block';
+    setTimeout(() => ok.style.display = 'none', 2500);
+    renderCustom();
+  }
+
+  function delCustom(id) {
+    if (!confirm('¿Eliminar este operativo?')) return;
+    custom = custom.filter(o => o.id !== id);
+    saveCustom();
+    delete store[id];
+    saveStore();
+    build();
+    buildFilters();
+    updateHeader();
+    renderCustom();
+    render();
+  }
+
+  // ─── View switching ───────────────────────────────────────────────────────
+  function go(v) {
+    openCoordForm = null;
+    view = v;
+    ['lista','mapa','agregar'].forEach(n => {
+      document.getElementById('view-'+n).classList.toggle('active', n === v);
+      document.getElementById('nb-'+n).classList.toggle('active', n === v);
+    });
+    render();
+  }
+
+  function render() {
+    if (view === 'lista')    renderLista();
+    else if (view === 'mapa')    renderMap();
+    else if (view === 'agregar') renderCustom();
+  }
+
+  // ─── Event listeners ──────────────────────────────────────────────────────
+  function bindEvents() {
+    const si = document.getElementById('si');
+    const sc = document.getElementById('sc');
+    si.addEventListener('input', () => { fQ = si.value; sc.style.display = fQ ? 'block' : 'none'; render(); });
+    sc.addEventListener('click', () => { fQ = ''; si.value = ''; sc.style.display = 'none'; render(); });
+    document.getElementById('fmes').addEventListener('change',  e => { fMes  = e.target.value; render(); });
+    document.getElementById('fanio').addEventListener('change', e => { fAnio = e.target.value; render(); });
+    ['pendiente','realizado','no_volver'].forEach(e => {
+      document.getElementById('ch-'+e).addEventListener('click', () => {
+        fE = fE === e ? '' : e; updateChips(); render();
+      });
+    });
+    document.getElementById('btn-add').addEventListener('click', submitForm);
+  }
+
+  // ─── Init ─────────────────────────────────────────────────────────────────
+  load();
+  build();
+  buildFilters();
+  updateHeader();
+  bindEvents();
+  render();
+
+  window.App = { go, openModal, closeModal, setE, save, toggleCoordForm, saveCoord, delCoord, delCustom };
+
+})();
+</script>
+</body>
+</html>
